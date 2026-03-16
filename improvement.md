@@ -4,7 +4,7 @@ This document outlines research-backed improvements to enhance the performance a
 
 ## 1. Machine Learning Refinement (Neural Filter)
 
-The current Random Forest model uses a basic set of features. To improve predictive power, we should focus on **Feature Engineering** and **Model Architecture**.
+The current XGBoost + VIP Similarity model uses an advanced set of features including the IMBA Algo Trend. To improve predictive power, we should focus on **Feature Engineering** and **Model Architecture**.
 
 ### A. Advanced Feature Engineering
 - **Lagged Features**: Add price changes and indicator values from the previous 3-5 candles. Markets have memory, and the momentum of the last few periods is highly predictive.
@@ -15,7 +15,7 @@ The current Random Forest model uses a basic set of features. To improve predict
 - **Candlestick Patterns**: Encode common patterns like Engulfing, Hammers, or Dojis as numerical features.
 
 ### B. Alternative Algorithms
-- **XGBoost / LightGBM**: These gradient-boosting algorithms often outperform Random Forest in financial time-series because they minimize residual errors more aggressively.
+- **LSTM (Long Short-Term Memory)**: For a truly "Neural" approach, an LSTM network can capture temporal dependencies that tree-based models might miss.
 - **LSTM (Long Short-Term Memory)**: For a truly "Neural" approach, an LSTM network can capture temporal dependencies that tree-based models might miss.
 
 ### C. Training Optimizations
@@ -52,12 +52,12 @@ The UT Bot Alerts strategy is a trend-following system. It excels in trending ma
 
 ---
 
-## 4. Key Learnings from Research (Random Forest & Indicators)
+## 4. Key Learnings from Research (XGBoost, Similarity & Indicators)
 
-### A. Random Forest specific optimizations (Video: Sm03GTT6OOw)
+### A. XGBoost specific optimizations (Video: Sm03GTT6OOw)
 - **Feature Importance**: Use the model's `feature_importances_` attribute to prune noise. If a feature (like a specific lag) has near-zero importance, remove it to reduce overfitting.
 - **Triple Barrier Labeling**: Instead of simple Win/Loss based on a fixed time exit, use a "Triple Barrier" (Stop Loss, Take Profit, or Time Out). This provides the ML model with more meaningful "Why" behind a trade's success.
-- **Bootstrapping**: Ensure the Random Forest is utilizing its "Bagging" (Bootstrap Aggregating) nature correctly by having a large enough number of trees (100-500).
+- **VIP Similarity**: Comparing new signals to historical "VIP" winners and "Losers" using Nearest Neighbors significantly boosts the filter's precision.
 
 ### B. High-Probability Signal Indicators (Video: R9XoCwRhmXw)
 - **Consensus Momentum**: The "best" indicators often aren't complex. Simple crossovers (e.g., EMA 9/21) combined with a high-timeframe trend filter yield the highest signal-to-noise ratio.

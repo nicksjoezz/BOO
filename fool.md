@@ -30,16 +30,20 @@ To fix this, the bot goes to "School" every night (Daily Retraining).
 *   It records **everything** about that moment: Was the RSI high? Was it a Monday? Was the market "jittery"?
 *   It then looks at the result: **Did that trade win or lose?**
 
-### 3. The XGBoost Model (The "Super Detective")
-We use a specific type of AI called **XGBoost**.
-*   It builds thousands of "Decision Trees."
-*   **Tree 1** might say: "If it's Monday and RSI is above 70, it's usually a loss."
-*   **Tree 2** might say: "If the price is far from the average, it might be a win."
-*   The AI combines **all** these trees to create a "Probability Score" (0% to 100%).
+### 3. The Hybrid Brain (XGBoost + VIP Similarity)
+We use a two-layer AI system:
+*   **Layer 1: XGBoost (The Probabilist)**: It builds thousands of "Decision Trees" to calculate a win probability score.
+*   **Layer 2: VIP Similarity (The Memory Engine)**: It explicitly looks at past "VIP" winners and "Losers." If a new signal looks too much like a past loss, it's blocked. If it looks like a VIP winner, it's prioritized.
 
-### 4. The Filtering (The "Final Decision")
+### 4. The IMBA Trend Filter (The Safety Guard)
+The bot now uses the **IMBA Algo Trend Line**. It's a specialized filter that ensures we are always trading with the trend:
+*   **Uptrend**: Only BUY signals are allowed.
+*   **Downtrend**: Only SELL signals are allowed.
+*   If the price is on the wrong side of the IMBA line, the bot simply waits.
+
+### 5. The Filtering (The "Final Decision")
 When the Scout finds a trade today, the bot sends all the current data to the AI Brain.
-*   **AI Brain**: "I've seen this 500 times in the last year. 80% of the time, this pattern led to a loss. **BLOCK THIS TRADE.**"
+*   **AI Brain**: "I've seen this 500 times in the last year. This pattern is 90% similar to historical **LOSERS**. **BLOCK THIS TRADE.**"
 *   Or: "This pattern is a high-probability winner. **EXECUTE TRADE.**"
 
 ### 5. "Fair" Training (No Cheating!)
@@ -54,6 +58,7 @@ Imagine taking an exam. If you've already seen the answers, your high score is a
 The AI doesn't just see "Price." It sees specific details called **Features**:
 
 *   **RSI (The Speedometer)**: We use two RSIs (7 and 14). It tells the AI if the market is exhausted or just starting to sprint.
+*   **The IMBA Trend (The Direction)**: Tells the bot if the primary trend is Up or Down. It must agree with the trade direction.
 *   **The EMA Ribbon (The 3-Tier Filter)**: We use 4 different Trend Lines. When all four are "stacked," it’s like a massive green light.
 *   **MACD (The Momentum Engine)**: Helps the AI see if the "fuel" (momentum) is increasing or decreasing.
 *   **Bollinger Bands (The Rubber Band)**: Two sets of bands show if the price is stretched too far. We also check for a "Squeeze," which often means a big move is coming.

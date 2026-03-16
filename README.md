@@ -1,13 +1,14 @@
 # Deriv ML-Optimized Trading Bot
 
-A professional trading bot for Deriv Rise/Fall options on the 5-minute timeframe. This bot combines the **UT Bot Alerts** indicator with an advanced **Machine Learning (Random Forest)** filter to achieve high win rates.
+A professional trading bot for Deriv Rise/Fall options on the 5-minute timeframe. This bot combines the **UT Bot Alerts** indicator with an advanced **XGBoost + VIP Similarity** ML filter to achieve high win rates.
 
 ## 🚀 Key Features
 
 - **Dashboard:** Professional web UI with real-time balance tracking, trade logs, and performance metrics.
 - **Dark Mode:** Responsive UI that looks great on mobile and desktop.
 - **10 Optimized Strategies:** Pre-configured strategies for 5 synthetic indices (R_100, R_75, R_50, R_25, R_10).
-- **ML Filter:** Automatically blocks high-probability losing signals using a Random Forest model trained on RSI, MACD, ADX, Bollinger Bands, and EMA.
+- **IMBA Trend Filter:** Integrated [IMBA] Algo Trend Line to ensure the bot only buys in uptrends and sells in downtrends.
+- **VIP Similarity ML:** Advanced filter that learns from historical winners (VIPs) and losers to block signals that resemble past losses.
 - **Backtesting Module:** Run historical simulations for any symbol and duration with automated data caching.
 - **Dockerized:** Ready for deployment on platforms like Railway.com or Heroku.
 
@@ -17,7 +18,7 @@ The strategies were developed through a multi-step optimization process:
 
 1.  **Indicator Porting:** The original PineScript *UT Bot Alerts* was ported to Python, maintaining its core trailing stop logic.
 2.  **3-Candle Exit Rule:** Specifically designed for Rise/Fall options. A signal is confirmed at candle close, entry happens at the next open, and the trade expires exactly 3 candles later (15 minutes).
-3.  **ML Optimization:** A Random Forest Classifier was trained to analyze raw UT Bot signals. By studying historical winners and losers against technical indicators (RSI, ADX, MACD, etc.), the model learned to recognize market conditions that lead to losses.
+3.  **ML Optimization:** An XGBoost Classifier combined with a VIP Similarity Engine analyzes raw UT Bot signals. By studying historical winners (VIPs) and losers against technical indicators (including the IMBA Trend Line), the model learns to recognize market conditions that lead to losses.
 4.  **Symbol-Specific Tuning:** Backtests were conducted across 5 major synthetic indices to generate high-accuracy strategy configurations documented in the `Profitable strategy/` folder.
 
 ## 🛠 Installation

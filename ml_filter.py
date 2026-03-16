@@ -4,6 +4,8 @@ import xgboost as xgb
 import joblib
 import os
 from datetime import datetime
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import NearestNeighbors
 
 class MLFilter:
     def __init__(self):
@@ -21,6 +23,15 @@ class MLFilter:
             eval_metric='aucpr',   # User suggested precision-recall optimization
             scale_pos_weight=1.0
         )
+
+        # VIP Similarity Engine (v8 Architecture)
+        self.scaler = StandardScaler()
+        self.vip_nn = NearestNeighbors(n_neighbors=5, metric='euclidean')
+        self.loser_nn = NearestNeighbors(n_neighbors=5, metric='euclidean')
+
+        self.vip_patterns = None  # Historical winner features
+        self.loser_patterns = None # Historical loser features
+
         self.is_trained = False
         self.trained_at = None
         self.best_threshold = 0.65
@@ -103,16 +114,28 @@ class MLFilter:
         if len(y) < 150:
             return False
 
-        X = self.prepare_features(df_work, X_indices)
+        X_raw = self.prepare_features(df_work, X_indices)
         y = np.array(y)
 
-        # Class Imbalance FIX: Set scale_pos_weight to Ratio of Losses/Wins
+        # 1. Normalize features for similarity comparison
+        X = self.scaler.fit_transform(X_raw)
+
+        # 2. Extract VIP (Winner) and Loser patterns for similarity engine
+        self.vip_patterns = X[y == 1]
+        self.loser_patterns = X[y == 0]
+
+        if len(self.vip_patterns) >= 5:
+            self.vip_nn.fit(self.vip_patterns)
+        if len(self.loser_patterns) >= 5:
+            self.loser_nn.fit(self.loser_patterns)
+
+        # 3. Class Imbalance FIX: Set scale_pos_weight to Ratio of Losses/Wins
         num_neg = np.sum(y == 0)
         num_pos = np.sum(y == 1)
         if num_pos > 0:
             self.model.scale_pos_weight = num_neg / num_pos
 
-        # Train model
+        # 4. Train XGBoost model
         self.model.fit(X, y)
 
         # --- Accuracy Safety Gate ---
@@ -162,20 +185,58 @@ class MLFilter:
         self.trained_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
         return True
 
+    def get_similarity_score(self, X_scaled):
+        """
+        Calculates if a signal is more similar to VIP Winners or Losers.
+        Returns a score: > 0 means more like a VIP, < 0 means more like a Loser.
+        """
+        if self.vip_patterns is None or self.loser_patterns is None:
+            return 0
+
+        if len(self.vip_patterns) < 5 or len(self.loser_patterns) < 5:
+            return 0
+
+        # Find distance to 5 nearest VIPs
+        dist_vip, _ = self.vip_nn.kneighbors(X_scaled)
+        avg_dist_vip = np.mean(dist_vip, axis=1)
+
+        # Find distance to 5 nearest Losers
+        dist_loser, _ = self.loser_nn.kneighbors(X_scaled)
+        avg_dist_loser = np.mean(dist_loser, axis=1)
+
+        # Similarity Score: Ratio of distances
+        # If avg_dist_vip is smaller than avg_dist_loser, score is positive (more similar to VIP)
+        similarity_score = (avg_dist_loser - avg_dist_vip) / (avg_dist_loser + avg_dist_vip + 1e-9)
+        return similarity_score
+
     def filter_signals(self, df):
         if not self.is_trained: return df
 
         df_work = df.copy().reset_index(drop=True)
+        # Process both sides on the same dataframe copy
         for side in ['buy', 'sell']:
             indices = df_work.index[df_work[side]].tolist()
             if not indices: continue
 
-            features = self.prepare_features(df_work, indices)
-            if len(features) == 0: continue
+            X_raw = self.prepare_features(df_work, indices)
+            if len(X_raw) == 0: continue
 
-            probs = self.model.predict_proba(features)[:, 1]
+            # Scale for consistent prediction
+            X_scaled = self.scaler.transform(X_raw)
+
+            # 1. XGBoost Probability
+            probs = self.model.predict_proba(X_scaled)[:, 1]
+
+            # 2. VIP Similarity Score
+            sim_scores = self.get_similarity_score(X_scaled)
+
             for i, idx in enumerate(indices):
-                if probs[i] < self.best_threshold:
+                # COMBINED LOGIC:
+                # Signal must have high XGBoost prob AND not be too similar to losers
+                # We block if it's below the threshold OR if it's significantly more similar to losers than winners
+                is_vip_pass = sim_scores[i] > -0.1 # Slight tolerance for loser similarity
+
+                if probs[i] < self.best_threshold or not is_vip_pass:
                     df_work.at[idx, side] = False
 
         df_work.index = df.index
@@ -184,10 +245,13 @@ class MLFilter:
     def save(self, filepath):
         joblib.dump({
             'model': self.model,
+            'scaler': self.scaler,
+            'vip_patterns': self.vip_patterns,
+            'loser_patterns': self.loser_patterns,
             'trained_at': self.trained_at,
             'features': self.feature_cols,
             'threshold': self.best_threshold,
-            'algo': 'xgboost_pipeline_v3'
+            'algo': 'vip_similarity_v8'
         }, filepath)
 
     def load(self, filepath):
@@ -196,8 +260,17 @@ class MLFilter:
                 data = joblib.load(filepath)
                 if isinstance(data, dict):
                     self.model = data['model']
+                    self.scaler = data.get('scaler', StandardScaler())
+                    self.vip_patterns = data.get('vip_patterns')
+                    self.loser_patterns = data.get('loser_patterns')
                     self.trained_at = data.get('trained_at')
                     self.best_threshold = data.get('threshold', 0.62)
+
+                    # Re-fit NNs if patterns exist
+                    if self.vip_patterns is not None and len(self.vip_patterns) >= 5:
+                        self.vip_nn.fit(self.vip_patterns)
+                    if self.loser_patterns is not None and len(self.loser_patterns) >= 5:
+                        self.loser_nn.fit(self.loser_patterns)
                 else:
                     self.model = data
                 self.is_trained = True

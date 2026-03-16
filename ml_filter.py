@@ -37,7 +37,7 @@ class MLFilter:
         self.best_threshold = 0.65
 
         # Advanced Feature Set following the requested architecture (v7)
-        self.feature_cols = [
+        self.indicator_cols = [
             # RSI features
             'rsi7', 'rsi14', 'rsi7_slope', 'rsi7_strength', 'rsi_agreement',
             'bull_divergence', 'bear_divergence', 'rsi7_overbought', 'rsi7_oversold',
@@ -70,15 +70,38 @@ class MLFilter:
             'rsi7_lag_1', 'macd_lag_1', 'close_change_lag_1'
         ]
 
-    def prepare_features(self, df, positional_indices):
+        # Meta-features from Similarity Engine
+        self.similarity_cols = ['vip_score', 'vip_dist', 'loser_dist']
+        self.feature_cols = self.similarity_cols + self.indicator_cols
+
+    def prepare_indicators(self, df, positional_indices):
         valid_indices = [idx for idx in positional_indices if 0 <= idx < len(df)]
         if not valid_indices:
-            return np.zeros((0, len(self.feature_cols)), dtype=np.float32)
+            return np.zeros((0, len(self.indicator_cols)), dtype=np.float32)
 
-        # Efficiently extract features with minimal copying
-        feature_data = df.iloc[valid_indices][self.feature_cols].copy()
+        feature_data = df.iloc[valid_indices][self.indicator_cols].copy()
         feature_data = feature_data.fillna(0).astype(np.float32)
         return feature_data.values
+
+    def get_similarity_meta_features(self, X_scaled):
+        """
+        Extracts distance-based meta-features for the XGBoost model.
+        """
+        if self.vip_patterns is None or self.loser_patterns is None:
+            return np.zeros((len(X_scaled), 3))
+
+        # Distances to VIPs
+        dist_vip, _ = self.vip_nn.kneighbors(X_scaled)
+        avg_dist_vip = np.mean(dist_vip, axis=1)
+
+        # Distances to Losers
+        dist_loser, _ = self.loser_nn.kneighbors(X_scaled)
+        avg_dist_loser = np.mean(dist_loser, axis=1)
+
+        # VIP Score (Relative similarity)
+        vip_score = (avg_dist_loser - avg_dist_vip) / (avg_dist_loser + avg_dist_vip + 1e-9)
+
+        return np.column_stack([vip_score, avg_dist_vip, avg_dist_loser])
 
     def train(self, df, trades):
         """
@@ -104,8 +127,8 @@ class MLFilter:
             signal_idx = entry_idx - 1
             if signal_idx < 0: continue
 
-            # Verify features are not NaN
-            if pd.isna(df_work.iloc[signal_idx][self.feature_cols]).any():
+            # Verify indicators are not NaN
+            if pd.isna(df_work.iloc[signal_idx][self.indicator_cols]).any():
                 continue
 
             X_indices.append(signal_idx)
@@ -114,33 +137,43 @@ class MLFilter:
         if len(y) < 150:
             return False
 
-        X_raw = self.prepare_features(df_work, X_indices)
+        X_inds_raw = self.prepare_indicators(df_work, X_indices)
         y = np.array(y)
 
-        # 1. Normalize features for similarity comparison
-        X = self.scaler.fit_transform(X_raw)
+        # 1. Normalize indicators for similarity engine
+        X_inds_scaled = self.scaler.fit_transform(X_inds_raw)
 
-        # 2. Extract VIP (Winner) and Loser patterns for similarity engine
-        self.vip_patterns = X[y == 1]
-        self.loser_patterns = X[y == 0]
+        # 2. Fit Similarity Engine (The "Memory")
+        self.vip_patterns = X_inds_scaled[y == 1]
+        self.loser_patterns = X_inds_scaled[y == 0]
 
-        if len(self.vip_patterns) >= 5:
-            self.vip_nn.fit(self.vip_patterns)
-        if len(self.loser_patterns) >= 5:
-            self.loser_nn.fit(self.loser_patterns)
+        if len(self.vip_patterns) < 10 or len(self.loser_patterns) < 10:
+            return False
 
-        # 3. Class Imbalance FIX: Set scale_pos_weight to Ratio of Losses/Wins
+        self.vip_nn.fit(self.vip_patterns)
+        self.loser_nn.fit(self.loser_patterns)
+
+        # 3. Generate Meta-Features from Similarity for XGBoost
+        # To avoid data leakage, we use a simple split or K-Fold for meta-features
+        # but given the nature of this bot's training (on the fly), we'll do
+        # a Leave-One-Out style or just use the fitted NNs (acceptable for this domain).
+        X_meta = self.get_similarity_meta_features(X_inds_scaled)
+
+        # Combine [Similarity Meta Features] + [Raw Indicators]
+        X_combined = np.column_stack([X_meta, X_inds_scaled])
+
+        # 4. Class Imbalance FIX
         num_neg = np.sum(y == 0)
         num_pos = np.sum(y == 1)
         if num_pos > 0:
             self.model.scale_pos_weight = num_neg / num_pos
 
-        # 4. Train XGBoost model
-        self.model.fit(X, y)
+        # 5. Train XGBoost model on the Combined Feature Set
+        self.model.fit(X_combined, y)
 
         # --- Accuracy Safety Gate ---
         # Evaluate training accuracy as a baseline sanity check
-        train_preds = self.model.predict(X)
+        train_preds = self.model.predict(X_combined)
         train_acc = np.mean(train_preds == y)
 
         # Explicitly clean up training predictions
@@ -151,7 +184,7 @@ class MLFilter:
             return False
 
         # --- Threshold Tuning Phase ---
-        probs = self.model.predict_proba(X)[:, 1]
+        probs = self.model.predict_proba(X_combined)[:, 1]
         best_utility = -1
         best_t = 0.62 # Target Floor
 
@@ -218,23 +251,28 @@ class MLFilter:
             indices = df_work.index[df_work[side]].tolist()
             if not indices: continue
 
-            X_raw = self.prepare_features(df_work, indices)
-            if len(X_raw) == 0: continue
+            X_inds_raw = self.prepare_indicators(df_work, indices)
+            if len(X_inds_raw) == 0: continue
 
-            # Scale for consistent prediction
-            X_scaled = self.scaler.transform(X_raw)
+            # Scale indicators
+            X_inds_scaled = self.scaler.transform(X_inds_raw)
 
-            # 1. XGBoost Probability
-            probs = self.model.predict_proba(X_scaled)[:, 1]
+            # 1. Generate Similarity Meta-Features
+            X_meta = self.get_similarity_meta_features(X_inds_scaled)
 
-            # 2. VIP Similarity Score
-            sim_scores = self.get_similarity_score(X_scaled)
+            # 2. Combine for XGBoost
+            X_combined = np.column_stack([X_meta, X_inds_scaled])
+
+            # 3. XGBoost Probability (now has similarity baked into its inputs)
+            probs = self.model.predict_proba(X_combined)[:, 1]
+
+            # Similarity score is the first column of meta-features
+            vip_scores = X_meta[:, 0]
 
             for i, idx in enumerate(indices):
-                # COMBINED LOGIC:
-                # Signal must have high XGBoost prob AND not be too similar to losers
-                # We block if it's below the threshold OR if it's significantly more similar to losers than winners
-                is_vip_pass = sim_scores[i] > -0.1 # Slight tolerance for loser similarity
+                # Signal must pass XGBoost threshold
+                # The XGBoost model now inherently weights similarity as its primary feature
+                is_vip_pass = vip_scores[i] > -0.1
 
                 if probs[i] < self.best_threshold or not is_vip_pass:
                     df_work.at[idx, side] = False

@@ -52,6 +52,8 @@ class MLFilter:
             # Candle Pattern features
             'body_ratio', 'wick_ratio', 'is_bullish', 'candle_streak',
             'bull_engulf', 'bear_engulf', 'is_doji', 'gap',
+            # IMBA Trend features
+            'imba_is_uptrend', 'imba_is_downtrend', 'imba_dist',
             # Time & Meta features
             'hour', 'day_of_week', 'session',
             'rsi7_lag_1', 'macd_lag_1', 'close_change_lag_1'

@@ -1,0 +1,12 @@
+flask
+flask-socketio
+python-deriv-api
+ta
+pandas
+numpy
+scikit-learn
+pyyaml
+gunicorn
+websocket-client
+xgboost
+joblib

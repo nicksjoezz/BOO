@@ -26,8 +26,12 @@ class MLFilter:
 
         # VIP Similarity Engine (v8 Architecture)
         self.scaler = StandardScaler()
-        self.vip_nn = NearestNeighbors(n_neighbors=5, metric='euclidean')
-        self.loser_nn = NearestNeighbors(n_neighbors=5, metric='euclidean')
+        self.vip_nn = NearestNeighbors(n_neighbors=10, metric='euclidean')
+        self.loser_nn = NearestNeighbors(n_neighbors=10, metric='euclidean')
+
+        # Cross-Comparison Engine (To find Repetitive Patterns)
+        self.all_signals_nn = NearestNeighbors(n_neighbors=20, metric='euclidean')
+        self.train_labels = None
 
         self.vip_patterns = None  # Historical winner features
         self.loser_patterns = None # Historical loser features
@@ -71,7 +75,7 @@ class MLFilter:
         ]
 
         # Meta-features from Similarity Engine
-        self.similarity_cols = ['vip_score', 'vip_dist', 'loser_dist']
+        self.similarity_cols = ['vip_score', 'vip_dist', 'loser_dist', 'win_consensus']
         self.feature_cols = self.similarity_cols + self.indicator_cols
 
     def prepare_indicators(self, df, positional_indices):
@@ -88,20 +92,29 @@ class MLFilter:
         Extracts distance-based meta-features for the XGBoost model.
         """
         if self.vip_patterns is None or self.loser_patterns is None:
-            return np.zeros((len(X_scaled), 3))
+            return np.zeros((len(X_scaled), 4))
 
-        # Distances to VIPs
+        # 1. Distances to VIPs (repetitive winners)
         dist_vip, _ = self.vip_nn.kneighbors(X_scaled)
         avg_dist_vip = np.mean(dist_vip, axis=1)
 
-        # Distances to Losers
+        # 2. Distances to Losers (repetitive losses)
         dist_loser, _ = self.loser_nn.kneighbors(X_scaled)
         avg_dist_loser = np.mean(dist_loser, axis=1)
 
-        # VIP Score (Relative similarity)
+        # 3. VIP Score (Relative similarity)
         vip_score = (avg_dist_loser - avg_dist_vip) / (avg_dist_loser + avg_dist_vip + 1e-9)
 
-        return np.column_stack([vip_score, avg_dist_vip, avg_dist_loser])
+        # 4. Win Consensus (Look at 20 most similar historical signals)
+        # What percentage of the most similar past trades were winners?
+        consensus = np.zeros(len(X_scaled))
+        if self.train_labels is not None:
+            _, indices = self.all_signals_nn.kneighbors(X_scaled)
+            for i, neighbors in enumerate(indices):
+                neighbor_labels = self.train_labels[neighbors]
+                consensus[i] = np.mean(neighbor_labels)
+
+        return np.column_stack([vip_score, avg_dist_vip, avg_dist_loser, consensus])
 
     def train(self, df, trades):
         """
@@ -144,14 +157,24 @@ class MLFilter:
         X_inds_scaled = self.scaler.fit_transform(X_inds_raw)
 
         # 2. Fit Similarity Engine (The "Memory")
+        # We store winners and losers separately for distance checks
+        # and combined for the consensus engine.
         self.vip_patterns = X_inds_scaled[y == 1]
         self.loser_patterns = X_inds_scaled[y == 0]
+
+        # We need to store the labels in the same order as the combined patterns
+        # if we are going to reconstruct the all_signals_nn from saved patterns.
+        self.train_labels = np.concatenate([np.ones(len(self.vip_patterns)), np.zeros(len(self.loser_patterns))])
 
         if len(self.vip_patterns) < 10 or len(self.loser_patterns) < 10:
             return False
 
         self.vip_nn.fit(self.vip_patterns)
         self.loser_nn.fit(self.loser_patterns)
+
+        # Re-stack to ensure the order matches our reconstructed train_labels
+        X_stacked = np.vstack([self.vip_patterns, self.loser_patterns])
+        self.all_signals_nn.fit(X_stacked)
 
         # 3. Generate Meta-Features from Similarity for XGBoost
         # To avoid data leakage, we use a simple split or K-Fold for meta-features
@@ -286,6 +309,8 @@ class MLFilter:
             'scaler': self.scaler,
             'vip_patterns': self.vip_patterns,
             'loser_patterns': self.loser_patterns,
+            'train_labels': self.train_labels,
+            'X_scaled': self.vip_patterns if self.vip_patterns is None else np.vstack([self.vip_patterns, self.loser_patterns]), # For consensus
             'trained_at': self.trained_at,
             'features': self.feature_cols,
             'threshold': self.best_threshold,
@@ -301,14 +326,20 @@ class MLFilter:
                     self.scaler = data.get('scaler', StandardScaler())
                     self.vip_patterns = data.get('vip_patterns')
                     self.loser_patterns = data.get('loser_patterns')
+                    self.train_labels = data.get('train_labels')
                     self.trained_at = data.get('trained_at')
                     self.best_threshold = data.get('threshold', 0.62)
 
                     # Re-fit NNs if patterns exist
-                    if self.vip_patterns is not None and len(self.vip_patterns) >= 5:
+                    if self.vip_patterns is not None and len(self.vip_patterns) >= 10:
                         self.vip_nn.fit(self.vip_patterns)
-                    if self.loser_patterns is not None and len(self.loser_patterns) >= 5:
+                    if self.loser_patterns is not None and len(self.loser_patterns) >= 10:
                         self.loser_nn.fit(self.loser_patterns)
+
+                    # Re-fit the consensus engine
+                    X_scaled = data.get('X_scaled')
+                    if X_scaled is not None:
+                        self.all_signals_nn.fit(X_scaled)
                 else:
                     self.model = data
                 self.is_trained = True

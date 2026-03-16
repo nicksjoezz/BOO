@@ -33,7 +33,7 @@ To fix this, the bot goes to "School" every night (Daily Retraining).
 ### 3. The Hybrid Brain (XGBoost + VIP Similarity)
 We use a two-layer AI system:
 *   **Layer 1: XGBoost (The Probabilist)**: It builds thousands of "Decision Trees" to calculate a win probability score.
-*   **Layer 2: VIP Similarity (The Memory Engine)**: It explicitly looks at past "VIP" winners and "Losers." If a new signal looks too much like a past loss, it's blocked. If it looks like a VIP winner, it's prioritized.
+*   **Layer 2: VIP Similarity (The Memory Engine)**: It "fingerprints" every trade using the full suite of indicators (RSI, MACD, Bollinger, EMA stacks, etc.). It looks for **repetitive patterns** in historical "VIP" winners and "Losers." If a new signal's fingerprint matches a historical loss, it's blocked.
 
 ### 4. The IMBA Trend Filter (The Safety Guard)
 The bot now uses the **IMBA Algo Trend Line**. It's a specialized filter that ensures we are always trading with the trend:

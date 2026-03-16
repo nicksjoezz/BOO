@@ -8,7 +8,7 @@ A professional trading bot for Deriv Rise/Fall options on the 5-minute timeframe
 - **Dark Mode:** Responsive UI that looks great on mobile and desktop.
 - **10 Optimized Strategies:** Pre-configured strategies for 5 synthetic indices (R_100, R_75, R_50, R_25, R_10).
 - **IMBA Trend Filter:** Integrated [IMBA] Algo Trend Line to ensure the bot only buys in uptrends and sells in downtrends.
-- **VIP Similarity ML:** Advanced filter that learns from historical winners (VIPs) and losers to block signals that resemble past losses.
+- **VIP Similarity ML:** Advanced filter that identifies repetitive winning (VIP) and losing patterns across over 50 technical indicators and candlestick formations.
 - **Backtesting Module:** Run historical simulations for any symbol and duration with automated data caching.
 - **Dockerized:** Ready for deployment on platforms like Railway.com or Heroku.
 

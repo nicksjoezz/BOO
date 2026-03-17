@@ -67,8 +67,6 @@ class MLFilter:
             # Candle Pattern features
             'body_ratio', 'wick_ratio', 'is_bullish', 'candle_streak',
             'bull_engulf', 'bear_engulf', 'is_doji', 'gap',
-            # IMBA Trend features
-            'imba_is_uptrend', 'imba_is_downtrend', 'imba_dist',
             # Time & Meta features
             'hour', 'day_of_week', 'session',
             'rsi7_lag_1', 'macd_lag_1', 'close_change_lag_1'
@@ -277,30 +275,6 @@ class MLFilter:
         self.trained_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
         return True
 
-    def get_similarity_score(self, X_scaled):
-        """
-        Calculates if a signal is more similar to VIP Winners or Losers.
-        Returns a score: > 0 means more like a VIP, < 0 means more like a Loser.
-        """
-        if self.vip_patterns is None or self.loser_patterns is None:
-            return 0
-
-        if len(self.vip_patterns) < 5 or len(self.loser_patterns) < 5:
-            return 0
-
-        # Find distance to 5 nearest VIPs
-        dist_vip, _ = self.vip_nn.kneighbors(X_scaled)
-        avg_dist_vip = np.mean(dist_vip, axis=1)
-
-        # Find distance to 5 nearest Losers
-        dist_loser, _ = self.loser_nn.kneighbors(X_scaled)
-        avg_dist_loser = np.mean(dist_loser, axis=1)
-
-        # Similarity Score: Ratio of distances
-        # If avg_dist_vip is smaller than avg_dist_loser, score is positive (more similar to VIP)
-        similarity_score = (avg_dist_loser - avg_dist_vip) / (avg_dist_loser + avg_dist_vip + 1e-9)
-        return similarity_score
-
     def filter_signals(self, df):
         if not self.is_trained: return df
 
@@ -331,7 +305,9 @@ class MLFilter:
             for i, idx in enumerate(indices):
                 # Signal must pass XGBoost threshold
                 # The XGBoost model now inherently weights similarity as its primary feature
-                is_vip_pass = vip_scores[i] > -0.1
+                # We also use a win_consensus check: more than 40% of similar past signals should be winners
+                win_cons = X_meta[i, 3]
+                is_vip_pass = vip_scores[i] > -0.1 and win_cons >= 0.4
 
                 if probs[i] < self.best_threshold or not is_vip_pass:
                     df_work.at[idx, side] = False

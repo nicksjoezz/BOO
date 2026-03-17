@@ -18,7 +18,7 @@ The strategies were developed through a multi-step optimization process:
 
 1.  **Indicator Porting:** The original PineScript *UT Bot Alerts* was ported to Python, maintaining its core trailing stop logic.
 2.  **3-Candle Exit Rule:** Specifically designed for Rise/Fall options. A signal is confirmed at candle close, entry happens at the next open, and the trade expires exactly 3 candles later (15 minutes).
-3.  **ML Optimization:** An XGBoost Classifier combined with a VIP Similarity Engine analyzes raw UT Bot signals. By studying historical winners (VIPs) and losers against technical indicators (including the IMBA Trend Line), the model learns to recognize market conditions that lead to losses.
+3.  **ML Optimization:** An XGBoost Classifier combined with a VIP Similarity Engine analyzes raw signals. By studying historical winners (VIPs) and losers against technical indicators (RSI, MACD, Patterns, etc.), the model learns to recognize market conditions that lead to losses.
 4.  **Symbol-Specific Tuning:** Backtests were conducted across 5 major synthetic indices to generate high-accuracy strategy configurations documented in the `Profitable strategy/` folder.
 
 ## 🛠 Installation

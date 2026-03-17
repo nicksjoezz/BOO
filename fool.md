@@ -26,7 +26,7 @@ This is the most advanced part of the bot. If the Scout finds a signal and the B
 The Brain doesn't just look at numbers; it learns from **Similarities**. It uses a sophisticated system to find repetitive winning and losing patterns.
 
 ### 1. Fingerprinting (The Indicators)
-Every time a trade happens, the bot creates a detailed "Fingerprint" using over 50 different data points (RSI, MACD, Bollinger Bands, EMA stacks, and Candle shapes). This fingerprint tells the Brain exactly what the market looked like at that moment.
+Every time a trade happens, the bot creates a detailed "Fingerprint" using over 50 different data points (RSI, MACD, Bollinger Bands, EMA stacks, and Candle shapes—*excluding the IMBA trend line itself*). This fingerprint tells the Brain exactly what the indicators and patterns looked like at that moment.
 
 ### 2. Learning from Winners (VIP VIP VIP)
 The Brain studies every successful trade (the VIPs) and identifies the similarities between them. It asks: "What repetitive patterns always appear when we win?" It treats this knowledge as its guide on **how to win**.

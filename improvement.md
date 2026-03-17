@@ -4,7 +4,7 @@ This document outlines research-backed improvements to enhance the performance a
 
 ## 1. Machine Learning Refinement (Neural Filter)
 
-The current XGBoost + VIP Similarity model uses an advanced set of features including the IMBA Algo Trend. To improve predictive power, we should focus on **Feature Engineering** and **Model Architecture**.
+The current XGBoost + VIP Similarity model uses an advanced set of features including indicators and patterns. To improve predictive power, we should focus on **Feature Engineering** and **Model Architecture**.
 
 ### A. Advanced Feature Engineering
 - **Lagged Features**: Add price changes and indicator values from the previous 3-5 candles. Markets have memory, and the momentum of the last few periods is highly predictive.

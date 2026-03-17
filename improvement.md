@@ -16,7 +16,6 @@ The current XGBoost + VIP Similarity model uses an advanced set of features incl
 
 ### B. Alternative Algorithms
 - **LSTM (Long Short-Term Memory)**: For a truly "Neural" approach, an LSTM network can capture temporal dependencies that tree-based models might miss.
-- **LSTM (Long Short-Term Memory)**: For a truly "Neural" approach, an LSTM network can capture temporal dependencies that tree-based models might miss.
 
 ### C. Training Optimizations
 - **Probability Thresholding**: Instead of just using the model's `predict()` (0 or 1), use `predict_proba()`. Only take trades where the win probability is > 65%. This significantly reduces trade frequency but boosts win-rate.

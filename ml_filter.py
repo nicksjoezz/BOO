@@ -177,10 +177,46 @@ class MLFilter:
         self.all_signals_nn.fit(X_stacked)
 
         # 3. Generate Meta-Features from Similarity for XGBoost
-        # To avoid data leakage, we use a simple split or K-Fold for meta-features
-        # but given the nature of this bot's training (on the fly), we'll do
-        # a Leave-One-Out style or just use the fitted NNs (acceptable for this domain).
-        X_meta = self.get_similarity_meta_features(X_inds_scaled)
+        # To avoid data leakage, we use a 2-fold stacking approach:
+        # Split data, fit NN on one half, generate features for the other half.
+        X_meta = np.zeros((len(X_inds_scaled), 4))
+        indices = np.arange(len(X_inds_scaled))
+        mid = len(X_inds_scaled) // 2
+
+        # Fold 1: Train on second half, predict first half
+        X1, X2 = X_inds_scaled[:mid], X_inds_scaled[mid:]
+        y1, y2 = y[:mid], y[mid:]
+
+        for fold in [1, 2]:
+            train_X = X2 if fold == 1 else X1
+            train_y = y2 if fold == 1 else y1
+            test_X = X1 if fold == 1 else X2
+
+            # Temporary NNs for the fold
+            v_nn = NearestNeighbors(n_neighbors=min(len(train_y[train_y==1]), 10), metric='euclidean')
+            l_nn = NearestNeighbors(n_neighbors=min(len(train_y[train_y==0]), 10), metric='euclidean')
+            a_nn = NearestNeighbors(n_neighbors=min(len(train_y), 20), metric='euclidean')
+
+            v_pats = train_X[train_y == 1]
+            l_pats = train_X[train_y == 0]
+
+            if len(v_pats) > 0: v_nn.fit(v_pats)
+            if len(l_pats) > 0: l_nn.fit(l_pats)
+            a_nn.fit(train_X)
+
+            # Generate meta-features for the test part of the fold
+            d_v, _ = v_nn.kneighbors(test_X)
+            d_l, _ = l_nn.kneighbors(test_X)
+            av_v = np.mean(d_v, axis=1)
+            av_l = np.mean(d_l, axis=1)
+            v_sc = (av_l - av_v) / (av_l + av_v + 1e-9)
+
+            _, idxs = a_nn.kneighbors(test_X)
+            cons = np.array([np.mean(train_y[ni]) for ni in idxs])
+
+            meta = np.column_stack([v_sc, av_v, av_l, cons])
+            if fold == 1: X_meta[:mid] = meta
+            else: X_meta[mid:] = meta
 
         # Combine [Similarity Meta Features] + [Raw Indicators]
         X_combined = np.column_stack([X_meta, X_inds_scaled])

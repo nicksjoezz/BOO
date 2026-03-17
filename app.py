@@ -61,8 +61,15 @@ def run_bt():
     bt_days = int(d['days'])
 
     async def get_all_data():
-        if await model_manager.ensure_symbol_ready(symbol):
-            fp = os.path.join('data', f"{symbol}_5m_2y.csv")
+        # During backtest we need data. ensure_symbol_ready fetches it but doesn't train.
+        fp = os.path.join('data', f"{symbol}_5m_2y.csv")
+        if os.path.exists(fp):
+            return pd.read_csv(fp)
+        else:
+            # If data is missing for some reason, sync it now (no training)
+            from handlers.data_handler import DataHandler
+            data_handler = DataHandler(data_dir=model_manager.data_dir)
+            await data_handler.update_symbol_data(symbol)
             if os.path.exists(fp):
                 return pd.read_csv(fp)
         return pd.DataFrame()

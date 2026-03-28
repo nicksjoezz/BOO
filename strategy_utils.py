@@ -66,8 +66,14 @@ def ut_bot(df, a=1, c=10):
     df['above'] = (df['ema1'] > df['xATRTrailingStop']) & (df['prev_ema1'] <= df['prev_xATR'])
     df['below'] = (df['ema1'] < df['xATRTrailingStop']) & (df['prev_ema1'] >= df['prev_xATR'])
 
-    df['buy'] = (df['close'] > df['xATRTrailingStop']) & df['above']
-    df['sell'] = (df['close'] < df['xATRTrailingStop']) & df['below']
+    # Add IMBA Trend Filter (Buy only in uptrend, Sell only in downtrend)
+    # These columns are added by add_indicators() which is called before ut_bot in the handlers
+    if 'imba_is_uptrend' in df.columns and 'imba_is_downtrend' in df.columns:
+        df['buy'] = (df['close'] > df['xATRTrailingStop']) & df['above'] & (df['imba_is_uptrend'] == 1)
+        df['sell'] = (df['close'] < df['xATRTrailingStop']) & df['below'] & (df['imba_is_downtrend'] == 1)
+    else:
+        df['buy'] = (df['close'] > df['xATRTrailingStop']) & df['above']
+        df['sell'] = (df['close'] < df['xATRTrailingStop']) & df['below']
 
     # Cleanup temporary columns
     df.drop(columns=['prev_xATR', 'prev_ema1'], inplace=True)

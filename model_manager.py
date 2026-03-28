@@ -126,49 +126,46 @@ class ModelManager:
             await asyncio.to_thread(self._train_symbol_sync, symbol, only_pending)
 
     async def startup_sync(self):
-        """Startup synchronization: processes default symbol R_50."""
+        """Startup synchronization: Fetches historical data for ALL symbols (NO TRAINING)."""
         if self.is_initial_training: return
         self.is_initial_training = True
 
         try:
-            self.log("Starting startup sync for default symbol (R_50)...")
-            # ensure_symbol_ready handles its own locking
-            await self.ensure_symbol_ready('R_50')
-            self.log("Startup synchronization finished.")
+            self.log("Starting startup sync (Fetching historical data for all symbols)...")
+            from handlers.data_handler import DataHandler
+            data_handler = DataHandler(data_dir=self.data_dir)
+
+            for symbol in self.symbols:
+                self.log(f"Syncing {symbol} data...")
+                async with self.training_lock:
+                    try:
+                        await data_handler.update_symbol_data(symbol)
+                    except Exception as e:
+                        self.log(f"Failed to sync {symbol} at startup: {e}")
+
+            self.log("Startup data synchronization finished. (ML Training will occur when bot is engaged)")
         finally:
             self.is_initial_training = False
             if self.socketio:
                 self.socketio.emit('training_complete', {'status': 'success'})
 
     async def ensure_symbol_ready(self, symbol):
-        """Ensures a symbol's data is updated and models are trained for the day."""
+        """Ensures a symbol's models are trained. Triggered when Bot is Engaged."""
         today = datetime.utcnow().strftime('%Y-%m-%d')
         last_trained_date = self.last_trained.get(symbol, "")
 
         # Check if all models are 'ready' and trained today
         all_ready = all(self.get_model_status(symbol, i+1) == 'ready' for i in range(len(self.strat_params)))
-        data_exists = os.path.exists(os.path.join(self.data_dir, f"{symbol}_5m_2y.csv"))
 
-        if all_ready and data_exists and last_trained_date == today:
-            self.log(f"Symbol {symbol} is already ready for today.")
+        if all_ready and last_trained_date == today:
+            self.log(f"Models for {symbol} are already trained for today.")
             return True
 
-        # Data sync is non-blocking to other symbols
-        self.log(f"Preparing {symbol}: Syncing market data...")
-        if self.socketio:
-            self.socketio.emit('training_progress', {'message': f"Syncing {symbol} market data..."})
+        self.log(f"Engage Triggered for {symbol}: Starting full-history ML training...")
 
         # --- Memory Management Optimization ---
-        # Ensure only ONE major operation (sync OR train) happens at a time across the system
-        # to prevent OOM errors in memory-constrained environments.
         async with self.training_lock:
-            from handlers.data_handler import DataHandler
-            data_handler = DataHandler(data_dir=self.data_dir)
-
             try:
-                # Sync data
-                await data_handler.update_symbol_data(symbol)
-
                 if self.socketio:
                     self.socketio.emit('training_progress', {'message': f"Training ML models for {symbol}..."})
 
@@ -178,15 +175,12 @@ class ModelManager:
                 self.save_metadata()
 
                 if self.socketio:
-                    self.socketio.emit('training_progress', {'message': f"{symbol} models ready."})
+                    self.socketio.emit('training_progress', {'message': f"{symbol} models ready for live trading."})
 
-                # Force cleanup after each symbol to ensure memory is available for next
                 gc.collect()
                 return True
             except Exception as e:
-                self.log(f"Failed to prepare {symbol}: {e}")
-                if self.socketio:
-                    self.socketio.emit('training_progress', {'symbol': symbol, 'status': 'failed'})
+                self.log(f"Failed to train models for {symbol} during engagement: {e}")
                 return False
 
     async def train_all_models(self):
@@ -209,12 +203,22 @@ class ModelManager:
         await self.startup_sync()
         while True:
             now = datetime.utcnow()
-            # Retrain daily at 00:05 UTC
+            # Retrain/Sync daily at 00:05 UTC
             next_run = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0)
             wait = (next_run - now).total_seconds()
             if wait <= 0: wait = 86400
-            self.log(f"Next full update scheduled in {wait/3600:.1f} hours.")
+            self.log(f"Next full daily update (Sync + ML) scheduled in {wait/3600:.1f} hours.")
             await asyncio.sleep(wait)
+
+            # Step 1: Sync historical data for ALL symbols
+            from handlers.data_handler import DataHandler
+            data_handler = DataHandler(data_dir=self.data_dir)
+            for symbol in self.symbols:
+                async with self.training_lock:
+                    try: await data_handler.update_symbol_data(symbol)
+                    except: pass
+
+            # Step 2: Retrain models for symbols that were already being used
             await self.train_all_models()
 
 model_manager = ModelManager()

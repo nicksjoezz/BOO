@@ -175,6 +175,20 @@ def add_indicators(df):
     cols_to_convert = df.select_dtypes(include=['float64']).columns
     df[cols_to_convert] = df[cols_to_convert].astype(np.float32)
 
+    # 10. IMBA Algo Trend Line
+    # Sensitivity factor 18 -> length 180
+    imba_sensitivity = 18
+    imba_length = int(max(1, imba_sensitivity * 10))
+    df['imba_high'] = df['high'].rolling(window=imba_length).max()
+    df['imba_low'] = df['low'].rolling(window=imba_length).min()
+    df['imba_trend_line'] = df['imba_high'] - (df['imba_high'] - df['imba_low']) * 0.5
+
+    df['imba_is_uptrend'] = (df['close'] > df['imba_trend_line']).astype(int)
+    df['imba_is_downtrend'] = (df['close'] < df['imba_trend_line']).astype(int)
+
+    # Distance from IMBA Trend Line as a feature
+    df['imba_dist'] = (df['close'] - df['imba_trend_line']) / (df['close'] + 1e-9)
+
     # Lagged Memory
     df['rsi7_lag_1'] = df['rsi7'].shift(1)
     df['macd_lag_1'] = df['macd_hist'].shift(1)

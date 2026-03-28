@@ -21,34 +21,47 @@ class StrategyHandler:
         a, c = self.strat_params[strategy_idx-1]
 
         try:
-            # Indicator calculation
+            # 1. Indicator calculation
             df = history_df.copy()
             df = add_indicators(df)
 
-            # Run UT Bot strategy
+            # 2. Check Trend First (IMBA Algo)
+            # We look at the last closed candle (index -2)
+            last_closed = df.iloc[-2]
+            is_uptrend = last_closed['imba_is_uptrend'] == 1
+            is_downtrend = last_closed['imba_is_downtrend'] == 1
+            trend_str = "UPTREND" if is_uptrend else ("DOWNTREND" if is_downtrend else "NO TREND")
+
+            closed_candle_time = time.strftime('%H:%M:%S', time.gmtime(last_closed['epoch']))
+            self.bot.log(f"TREND STATUS: [{closed_candle_time}] {trend_str} (IMBA Algo)")
+
+            if not (is_uptrend or is_downtrend):
+                self.bot.log(f"SIGNAL STATUS: [{closed_candle_time}] No trade allowed in neutral market.")
+                return None
+
+            # 3. Look for matching UT Bot signals
             df = ut_bot(df, a=a, c=c)
-
-            # Check signal on the last closed candle (index -2)
             raw_sig = df.iloc[-2]
-            buy_triggered = raw_sig['buy']
-            sell_triggered = raw_sig['sell']
 
-            closed_candle_time = time.strftime('%H:%M:%S', time.gmtime(raw_sig['epoch']))
+            # Align signals with trend
+            buy_triggered = raw_sig['buy'] and is_uptrend
+            sell_triggered = raw_sig['sell'] and is_downtrend
+
             if buy_triggered or sell_triggered:
                 side = 'BUY' if buy_triggered else 'SELL'
-                self.bot.log(f"SIGNAL STATUS: [{closed_candle_time}] {side} Signal detected. Verifying with Neural Filter...")
+                self.bot.log(f"SIGNAL STATUS: [{closed_candle_time}] {side} Signal found in {trend_str}. Verifying with Neural Filter...")
 
-                # ML Filter (XGBoost)
-                # This model has been trained on thousands of past signals to distinguish winners from losers.
+                # ML Filter (VIP Similarity & XGBoost)
+                # This model has been trained on thousands of past signals to distinguish VIP winners from losers.
                 ml = model_manager.get_model(symbol, strategy_idx)
                 if ml:
                     df_ml = ml.filter_signals(df)
                     ml_sig = df_ml.iloc[-2]
                     if ml_sig['buy'] or ml_sig['sell']:
-                        self.bot.log(f"NEURAL FILTER: [{closed_candle_time}] [PASSED] High-probability winner identified. Executing {side} trade.")
+                        self.bot.log(f"NEURAL FILTER: [{closed_candle_time}] [PASSED] VIP Similarity & Probability high. Executing {side} trade.")
                         return 'CALL' if buy_triggered else 'PUT'
                     else:
-                        self.bot.log(f"NEURAL FILTER: [{closed_candle_time}] [BLOCKED] Signal resembles historical losses.")
+                        self.bot.log(f"NEURAL FILTER: [{closed_candle_time}] [BLOCKED] Signal resembles historical losses (LOSER pattern).")
                 else:
                     self.bot.log(f"NEURAL FILTER: [{closed_candle_time}] [INACTIVE] Executing raw signal.")
                     return 'CALL' if buy_triggered else 'PUT'
